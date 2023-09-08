@@ -1,0 +1,436 @@
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>Sperry Glacier</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/4.27/esri/themes/light/main.css" />
+    <link href='https://fonts.googleapis.com/css?family=Permanent Marker' rel='stylesheet'>
+    <script src="https://js.arcgis.com/4.27/"></script>
+
+    <script>
+      require([
+        "esri/Map",
+        "esri/layers/FeatureLayer",
+        "esri/views/SceneView",
+        "esri/core/promiseUtils",
+        "esri/widgets/Legend",
+        "esri/widgets/Home",
+        "esri/widgets/Compass",
+        "esri/widgets/NavigationToggle",
+        "esri/widgets/Slider",
+        "esri/widgets/Fullscreen"
+      ], (Map, FeatureLayer, SceneView, promiseUtils, Legend, Home, Compass, NavigationToggle, Slider, Fullscreen) => {
+        const layer = new FeatureLayer({
+          url: "https://services6.arcgis.com/wmpjgIyUSUNdVDRz/arcgis/rest/services/Sperry/FeatureServer",
+          title: "Glacier Footprints",
+          effect: "bloom(2.5 0 0.5)"
+        });
+
+        const map = new Map({
+          basemap: "topo-vector",
+          ground: "world-elevation",
+          layers: [layer]
+        });
+
+        const view = new SceneView({
+          map: map,
+          container: "viewDiv",
+          scale: 45000,
+          center: [-113.7640448, 48.6311785]
+        });
+
+        const applicationDiv = document.getElementById("applicationDiv");
+        const sliderValue = document.getElementById("sliderValue");
+        const playButton = document.getElementById("playButton");
+        const titleDiv = document.getElementById("titleDiv");
+        let animation = null;
+
+        const slider = new Slider({
+          container: "slider",
+          min: 1850,
+          max: 2015,
+          values: [ 1960 ],
+          step: 1,
+          visibleElements: {
+            rangeLabels: true
+          }
+        });
+
+        function inputHandler(event) {
+          stopAnimation();
+          setYear(event.value);
+        }
+        slider.on("thumb-drag", inputHandler);
+
+        // Toggle animation on/off when user
+        // clicks on the play button
+        playButton.addEventListener("click", () => {
+          if (playButton.classList.contains("toggled")) {
+            stopAnimation();
+          } else {
+            startAnimation();
+          }
+        });
+
+        view.ui.empty("top-left");
+        view.ui.add(titleDiv, "top-left");
+        view.ui.add(
+          new Home({
+            view: view
+          }),
+          "top-right"
+        );
+        
+        view.ui.add(
+          new Fullscreen({
+            view: view,
+            element: applicationDiv
+          }),
+          "top-right"
+        );
+        
+        view.ui.add(
+          new Compass({
+            view: view,
+            element: applicationDiv
+          }),
+          "top-right"
+        );
+        
+        view.ui.add(
+          new NavigationToggle({
+            view: view,
+            element: applicationDiv
+          }),
+          "top-right"
+        );
+        
+
+        
+        
+        function handleRowClick(event) {
+          const year = parseInt(event.currentTarget.getAttribute("data-year"));
+          setYear(year);
+          stopAnimation(); // Stop animation if it's playing when a row is clicked.
+        }
+        
+        function buildTable(data) {
+          const tableDiv = document.getElementById("dataTable");
+          let html = "<table><thead><tr><th>Year</th><th>Area (Acres)</th></tr></thead><tbody>";
+
+          data.forEach(feature => {
+            const year = feature.attributes.Year;
+            const area = feature.attributes.ACRES.toFixed(1);
+            html += `<tr data-year="${year}"><td>${year}</td><td>${area}</td></tr>`;
+          });
+
+          html += "</tbody></table>";
+          tableDiv.innerHTML = html;
+
+          // Attach click handlers to rows
+          const rows = document.querySelectorAll("#dataTable tr[data-year]");
+          rows.forEach(row => {
+              row.addEventListener("click", handleRowClick);
+          });
+        }
+
+        // Query the layer for the required data
+        const query = layer.createQuery();
+        query.where = "1=1"; // Fetch all records
+        query.outFields = ["Year", "ACRES"];
+        query.orderByFields = ["Year ASC"];
+
+        layer.queryFeatures(query).then(response => {
+          buildTable(response.features);
+        });
+
+
+
+        setYear(1850);
+
+        function setYear(value) {
+            sliderValue.innerHTML = Math.floor(value);
+            slider.viewModel.setValue(0, value);
+            layer.renderer = createRenderer(value);
+
+            const rows = document.querySelectorAll("#dataTable tr[data-year]");
+            let targetRow = null;
+            rows.forEach(row => {
+                if (parseInt(row.getAttribute("data-year")) === Math.floor(value)) {
+                    row.classList.add("highlight");
+                    targetRow = row;
+                } else {
+                    row.classList.remove("highlight");
+                }
+            });
+
+            // Scroll to the highlighted row
+            if(targetRow) {
+                const tableDiv = document.getElementById("dataTable");
+                tableDiv.scrollTop = targetRow.offsetTop - (tableDiv.offsetHeight / 2) + (targetRow.offsetHeight / 2);
+            }
+        }
+
+        function createRenderer(year) {
+          const opacityStops = [
+            {
+              opacity: 0.45,
+              value: year
+            },
+            {
+              opacity: 0.45,
+              value: year + 1
+            },
+           {
+              opacity: 0,
+              value: year - 1
+            },
+           {
+              opacity: 0,
+              value: year + 2
+            }
+          ];
+
+          return {
+            type: "simple",
+            symbol: {
+              type: "simple-fill",
+              color: "rgb(0, 0, 0)",
+              outline: {
+               width: 0.1,
+               color: "#F88C24"}
+            },
+            visualVariables: [
+              {
+                type: "opacity",
+                field: "Year",
+                stops: opacityStops,
+                legendOptions: {
+                  showLegend: false
+                }
+              },
+              {
+                type: "color",
+                field: "Year",
+                legendOptions: {
+                  showLegend: false
+                },
+                stops: [
+                  {
+                    value: year,
+                    color: "#F58800",
+                    label: Math.floor(year)
+                  }
+                ]
+              }
+            ]
+          };
+        }
+
+        function startAnimation() {
+          stopAnimation();
+          animation = animate(slider.values[0]);
+          playButton.classList.add("toggled");
+        }
+
+        function stopAnimation() {
+          if (!animation) {
+            return;
+          }
+
+          animation.remove();
+          animation = null;
+          playButton.classList.remove("toggled");
+        }
+
+        function animate(startValue) {
+          let animating = true;
+          let value = startValue;
+
+          const frame = (timestamp) => {
+            if (!animating) {
+              return;
+            }
+
+            value += 0.5;
+            if (value > 2015) {
+              value = 1850;
+            }
+
+            setYear(value);
+
+            // Update at 30fps
+            setTimeout(() => {
+              requestAnimationFrame(frame);
+            }, 1000 / 30);
+          };
+
+          frame();
+
+          return {
+            remove: () => {
+              animating = false;
+            }
+          };
+        }
+
+      });
+    </script>
+
+    <style>
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        margin: 0;
+      }
+
+      #applicationDiv {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      #viewDiv {
+        width: 100%;
+        height: 100%;
+        flex: 1 1 auto;
+        order: 1;
+      }
+
+      #titleDiv {
+        font-weight: 40;
+        font-style: normal;
+        font-size: 5rem;
+        padding: 10px;
+        font-family: 'Permanent Marker';
+        color: #28363D;
+        text-shadow: 0 0 15px #FFFFFF;
+        background-color: transparent;
+        box-shadow: none;
+        max-height: 30%;
+        order: 1; 
+        }
+
+      #sliderContainer {
+        flex: 0 0 80px;
+        order: 2;
+        display: flex;
+        flex-flow: row;
+        padding: 0 12px;
+      }
+
+      #sliderValue {
+        flex: 0 0 100px;
+        order: 1;
+
+        display: flex;
+        justify-content: center;
+        flex-direction: column;
+        text-align: center;
+        font-family: 'Permanent Marker';
+        font-size: 300%;
+      }
+
+      #sliderInnerContainer {
+        flex: 1 1 auto;
+        order: 2;
+        
+
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 0 20px;
+      }
+
+      #slider {
+        width: 100%;
+      }
+
+      #playButton {
+        flex: 0 0 100px;
+        order: 3;
+
+        margin: 20px 0;
+      }
+      
+      #dataTable {
+        position: absolute;
+        bottom: 120px;
+        left: 10px;
+        max-height: 50%;
+        overflow-y: auto;
+        background-color: rgba(255, 255, 255, 0.8);
+        border: 1px solid #ccc;
+        border-radius: 4px;
+        padding: 10px; 
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    }
+
+
+
+      
+
+      #dataTable table {
+        width: 100%;
+        font-size: 15px; 
+        border-collapse: collapse;
+        color: #1A4647;
+      }
+
+      #dataTable th, #dataTable td {
+        border: 1px solid #ccc;
+        padding: 2px 5px;
+        text-align: center;
+      }
+
+      #dataTable tr.highlight {
+        background-color: #266667;
+        color: #fff;
+      }
+      
+      #dataTable thead th {
+        position: sticky;
+        top: 0;
+        background: rgba(255, 255, 255, 0.8); /* Match background with table */
+        z-index: 2; /* Ensure it's on top */
+      }
+
+     #dataTable tbody th, #dataTable tbody td {
+        border-top: none; /* Remove top border in table body cells for a cleaner look */
+      }
+
+    </style>
+  </head>
+
+  <body>
+    <div id="applicationDiv">
+      <div id="viewDiv">
+        <div id="titleDiv" class="esri-widget">Sperry Glacier</div>
+      </div>
+      <div id="dataTable"></div>
+      <div id="sliderContainer" class="esri-widget">
+        <span id="sliderValue"></span>
+        <div id="sliderInnerContainer">
+          <div id="slider"></div>
+        </div>
+        <div id="playButton" class="esri-widget esri-widget--button toggle-button">
+          <div>
+            <span class="toggle-button-icon esri-icon-play" aria-label="play icon"></span>
+            Play
+          </div>
+          <div>
+            <span class="toggle-button-icon esri-icon-pause" aria-label="pause icon"></span>
+            Pause
+          </div>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
