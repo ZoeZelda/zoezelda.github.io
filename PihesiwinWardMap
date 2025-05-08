@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Ward Boundary Map - Mapbox</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.14.1/mapbox-gl.css" rel="stylesheet" />
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { width: 100%; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script>
+        // Mapbox Access Token
+        mapboxgl.accessToken = 'pk.eyJ1IjoibWFwcGluZ2NhdCIsImEiOiJjbWFlbXF4dzIwOXBkMmlwd3VyMmY2MzluIn0.X2oCrI1_4_NeZeut23F25Q';
+
+        // Initialize Map
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/streets-v11',
+            center: [-113.4938, 53.5461], 
+            zoom: 10
+        });
+
+        map.on('load', () => {
+            fetch('pihesiwin.geojson')
+                .then(response => response.json())
+                .then(data => {
+                    map.addSource('wardBoundary', {
+                        'type': 'geojson',
+                        'data': data
+                    });
+
+                    map.addLayer({
+                        'id': 'wardBoundaryLayer',
+                        'type': 'line',
+                        'source': 'wardBoundary',
+                        'layout': {},
+                        'paint': {
+                            'line-color': '#272779',
+                            'line-width': 3.5,
+                            'line-opacity': 0.7
+                        }
+                    }, 'road-label'); 
+                    
+
+                    // Zoom to the boundary
+                    const bounds = new mapboxgl.LngLatBounds();
+                    data.features.forEach(function(feature) {
+                        const coordinates = feature.geometry.coordinates[0];
+                        coordinates.forEach(function(coord) {
+                            bounds.extend(coord);
+                        });
+                    });
+
+                    // Fit the map to the boundaries of the ward
+                    map.fitBounds(bounds, {
+                        padding: 20,
+                        maxZoom: 14,
+                        duration: 1000
+                    });
+                })
+                .catch(error => console.log('Error loading the GeoJSON file: ' + error));
+
+        });
+    </script>
+</body>
+</html>
